@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Upbit Tradebot Dashboard</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0A0E17; color: #E5E9F0; min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic', sans-serif;
+    padding: 40px 24px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 28px; flex-wrap: wrap; gap: 8px; }
+  h1 { font-size: 22px; font-weight: 700; letter-spacing: 0.02em; }
+  h1 span { color: #C8A45A; }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .status-pill { font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 20px; display: inline-flex; align-items: center; gap: 6px; }
+  .status-pill.running { background: rgba(74,222,128,0.12); color: #4ADE80; border: 1px solid rgba(74,222,128,0.3); }
+  .status-pill.stale { background: rgba(239,68,68,0.12); color: #EF4444; border: 1px solid rgba(239,68,68,0.3); }
+  .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .updated { font-size: 13px; color: #6B7688; }
+
+  .section-title { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7688; margin: 36px 0 14px; }
+  .section-title:first-of-type { margin-top: 0; }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; }
+  .stat-card { background: #10151F; border: 1px solid #1D2433; border-radius: 14px; padding: 20px 22px; }
+  .stat-label { font-size: 12px; color: #6B7688; margin-bottom: 8px; }
+  .stat-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat-value.up { color: #EF4444; }
+  .stat-value.down { color: #3B82F6; }
+
+  .pos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .pos-card { background: #10151F; border: 1px solid #1D2433; border-radius: 14px; padding: 20px 22px; transition: border-color 0.3s; }
+  .pos-card.up { border-color: rgba(239,68,68,0.4); }
+  .pos-card.down { border-color: rgba(59,130,246,0.4); }
+  .pos-coin { font-size: 14px; font-weight: 700; letter-spacing: 0.08em; color: #8B95A8; margin-bottom: 10px; }
+  .pos-price { font-size: 26px; font-weight: 700; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+  .pos-pnl { font-size: 14px; font-weight: 600; margin-bottom: 14px; }
+  .pos-pnl.up { color: #EF4444; }
+  .pos-pnl.down { color: #3B82F6; }
+  .pos-meta { font-size: 12px; color: #6B7688; line-height: 1.8; }
+  .pos-meta b { color: #A7B0C0; font-weight: 600; }
+
+  .table-wrap { background: #10151F; border: 1px solid #1D2433; border-radius: 14px; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 480px; }
+  th { text-align: left; padding: 14px 18px; color: #6B7688; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid #1D2433; }
+  td { padding: 13px 18px; border-bottom: 1px solid #161B26; font-variant-numeric: tabular-nums; }
+  tr:last-child td { border-bottom: none; }
+  .type-buy { color: #4ADE80; font-weight: 700; }
+  .type-sell { color: #F87171; font-weight: 700; }
+  .pnl-up { color: #EF4444; }
+  .pnl-down { color: #3B82F6; }
+
+  .empty { text-align: center; padding: 40px 20px; color: #6B7688; font-size: 13.5px; }
+  .error-box { color: #EF4444; font-size: 14px; padding: 20px; text-align: center; background: #10151F; border: 1px solid #1D2433; border-radius: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Upbit <span>Tradebot</span> Dashboard</h1>
+    <div class="header-right">
+      <span class="status-pill" id="statusPill">불러오는 중...</span>
+      <span class="updated" id="updated"></span>
+    </div>
+  </header>
+
+  <div class="section-title">요약</div>
+  <div class="stats-grid" id="statsGrid">
+    <div class="stat-card"><div class="stat-label">누적 손익</div><div class="stat-value" id="totalProfit">-</div></div>
+    <div class="stat-card"><div class="stat-label">오늘 손익</div><div class="stat-value" id="todayProfit">-</div></div>
+    <div class="stat-card"><div class="stat-label">총 거래 수</div><div class="stat-value" id="totalTrades">-</div></div>
+    <div class="stat-card"><div class="stat-label">승률</div><div class="stat-value" id="winRate">-</div></div>
+    <div class="stat-card"><div class="stat-label">신규상장 포착</div><div class="stat-value" id="listingCatches">-</div></div>
+  </div>
+
+  <div class="section-title">보유 포지션</div>
+  <div class="pos-grid" id="posGrid"><div class="empty">불러오는 중...</div></div>
+
+  <div class="section-title">최근 거래</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>시간</th><th>코인</th><th>구분</th><th>가격</th><th>손익률</th></tr>
+      </thead>
+      <tbody id="tradesBody">
+        <tr><td colspan="5" class="empty">불러오는 중...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+// TODO: Firebase 콘솔 > 프로젝트 설정 > 내 앱 > 웹앱 설정값(firebaseConfig)으로 교체하세요.
+const FB_CONFIG = {
+  apiKey: "REPLACE_ME",
+  authDomain: "upbit-tradebot-monitor.firebaseapp.com",
+  projectId: "upbit-tradebot-monitor",
+  storageBucket: "upbit-tradebot-monitor.firebasestorage.app",
+  messagingSenderId: "REPLACE_ME",
+  appId: "REPLACE_ME"
+};
+
+firebase.initializeApp(FB_CONFIG);
+const db = firebase.firestore();
+
+function formatKRW(n) {
+  const sign = n > 0 ? '+' : '';
+  return sign + Number(n).toLocaleString('ko-KR') + '원';
+}
+
+function pnlClass(n) {
+  return n >= 0 ? 'up' : 'down';
+}
+
+function render(data) {
+  // 상태 배지 — 마지막 업데이트가 10분 넘게 없으면 정지로 간주
+  const pill = document.getElementById('statusPill');
+  const updatedAt = data.updated_at && data.updated_at.toDate ? data.updated_at.toDate() : null;
+  const staleMs = updatedAt ? (Date.now() - updatedAt.getTime()) : Infinity;
+  const isStale = staleMs > 10 * 60 * 1000;
+  pill.className = 'status-pill ' + (isStale ? 'stale' : 'running');
+  pill.innerHTML = `<span class="dot"></span>${isStale ? '응답 없음' : '실행 중'}`;
+  document.getElementById('updated').textContent = updatedAt ? '마지막 업데이트: ' + updatedAt.toLocaleString('ko-KR') : '';
+
+  // 요약
+  document.getElementById('totalProfit').textContent = formatKRW(data.total_profit_krw || 0);
+  document.getElementById('totalProfit').className = 'stat-value ' + pnlClass(data.total_profit_krw || 0);
+  document.getElementById('todayProfit').textContent = formatKRW(data.today_profit_krw || 0);
+  document.getElementById('todayProfit').className = 'stat-value ' + pnlClass(data.today_profit_krw || 0);
+  document.getElementById('totalTrades').textContent = data.total_trades ?? 0;
+  document.getElementById('winRate').textContent = (data.win_rate ?? 0) + '%';
+  document.getElementById('listingCatches').textContent = data.new_listing_catches ?? 0;
+
+  // 보유 포지션
+  const posGrid = document.getElementById('posGrid');
+  const positions = data.positions || [];
+  if (!positions.length) {
+    posGrid.innerHTML = '<div class="empty">현재 보유 중인 포지션이 없어요.</div>';
+  } else {
+    posGrid.innerHTML = positions.map(p => {
+      const dir = p.pnl_pct >= 0 ? 'up' : 'down';
+      const arrow = p.pnl_pct >= 0 ? '▲' : '▼';
+      return `
+        <div class="pos-card ${dir}">
+          <div class="pos-coin">${p.coin} / KRW</div>
+          <div class="pos-price">₩${Number(p.current_price).toLocaleString('ko-KR')}</div>
+          <div class="pos-pnl ${dir}">${arrow} ${Math.abs(p.pnl_pct).toFixed(2)}%</div>
+          <div class="pos-meta">
+            <div><b>진입가</b> ₩${Number(p.entry_price).toLocaleString('ko-KR')}</div>
+            <div><b>수량</b> ${Number(p.quantity).toFixed(6)}</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // 최근 거래
+  const tbody = document.getElementById('tradesBody');
+  const trades = data.recent_trades || [];
+  if (!trades.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">거래 내역이 없어요.</td></tr>';
+  } else {
+    tbody.innerHTML = trades.map(t => `
+      <tr>
+        <td>${t.time}</td>
+        <td>${t.coin}</td>
+        <td class="${t.type === '매수' ? 'type-buy' : 'type-sell'}">${t.type}</td>
+        <td>₩${Number(t.price).toLocaleString('ko-KR')}</td>
+        <td class="${t.profit_pct == null ? '' : (t.profit_pct >= 0 ? 'pnl-up' : 'pnl-down')}">${t.profit_pct == null ? '-' : t.profit_pct.toFixed(2) + '%'}</td>
+      </tr>
+    `).join('');
+  }
+}
+
+db.collection('bot_status').doc('live').onSnapshot(
+  doc => {
+    if (!doc.exists) {
+      document.getElementById('statusPill').textContent = '데이터 없음';
+      return;
+    }
+    render(doc.data());
+  },
+  err => {
+    document.getElementById('statusPill').textContent = '연결 오류';
+    console.error('Firestore 연결 실패:', err);
+  }
+);
+</script>
+</body>
+</html>
